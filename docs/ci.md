@@ -92,10 +92,14 @@ look wrong:
 target/release/mudling plugin test <path to ci/reference> --log crates/mudling-bench/fixtures/session.txt
 ```
 
-It should read about `+5 µs`. It costs about 1 µs per rule, so add or remove rules
-in [`ci/reference/text.toml`](../ci/reference/text.toml) to bring it back. On an
-Apple Silicon Mac at MUDling commit `e0240d0`, five rules read between +4 and
-+5 µs on that log.
+It should read just under `+5 µs`. Each rule costs about 0.6 µs on that log, so
+add or remove rules in [`ci/reference/text.toml`](../ci/reference/text.toml) to
+bring it back. On an Apple Silicon Mac at MUDling commit `1282f8a`, with a load
+average under 4, eight rules read between +4.5 and +4.8 µs on that log.
+
+A rule costs less on short lines, so on a log of short lines the reference reads
+nearer +3 µs, and the limit there is stricter than 5 µs. The shared log holds the
+game's usual mix of lengths, and it's the one that stops most heavy plugins.
 
 ## Running it yourself
 
