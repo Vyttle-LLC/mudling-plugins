@@ -1,0 +1,85 @@
+name: Registry
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Runs a stranger's plugin, so it holds no secret and can write nothing.
+  check:
+    name: Check plugins
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the pinned versions
+        run: ci/load-pins.sh
+      - name: Check out MUDling at the pinned commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Vyttle-LLC/mudling
+          ref: ${{ env.MUDLING_COMMIT }}
+          path: .mudling
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+        with:
+          workspaces: .mudling
+      - name: Build mudling
+        run: cargo build --release --locked -p mudling-cli --manifest-path .mudling/Cargo.toml
+      - name: Install luau-analyze
+        run: ci/install-luau.sh "$RUNNER_TEMP/luau"
+      - name: Test the checks themselves
+        env:
+          MUDLING: .mudling/target/release/mudling
+          LUAU_ANALYZE: ${{ runner.temp }}/luau/luau-analyze
+          SESSION_LOG: .mudling/crates/mudling-bench/fixtures/session.txt
+        run: python3 -m unittest discover ci
+      - name: Check every plugin
+        run: >
+          python3 ci/registry.py check
+          --mudling .mudling/target/release/mudling
+          --luau-analyze "$RUNNER_TEMP/luau/luau-analyze"
+          --session-log .mudling/crates/mudling-bench/fixtures/session.txt
+          --report budget.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: budget
+          path: budget.json
+          if-no-files-found: ignore
+
+  # Holds the signing key, so it runs no plugin's code and only runs on main.
+  publish:
+    name: Publish the signed index
+    needs: check
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    # One at a time, and a newer main replaces any run still waiting.
+    concurrency:
+      group: publish-index
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build and sign the index
+        env:
+          INDEX_SIGNING_KEY: ${{ secrets.INDEX_SIGNING_KEY }}
+          TZ: UTC
+        run: >
+          python3 ci/registry.py index
+          --commit "$GITHUB_SHA"
+          --published-at "$(git show --no-patch --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)"
+          --output "$RUNNER_TEMP/index.json"
+      - name: Publish it to the index branch
+        run: ci/publish-index.sh "$RUNNER_TEMP/index.json"

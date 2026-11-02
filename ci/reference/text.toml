@@ -1,0 +1,22 @@
+# Each rule matches every line and captures all of it, so the cost is the same
+# per line whatever the log holds: about 1 µs a rule on a quiet machine.
+
+[[pattern]]
+name = "reference.one"
+pattern = '''(?<line>.*)'''
+
+[[pattern]]
+name = "reference.two"
+pattern = '''(?<line>.*)'''
+
+[[pattern]]
+name = "reference.three"
+pattern = '''(?<line>.*)'''
+
+[[pattern]]
+name = "reference.four"
+pattern = '''(?<line>.*)'''
+
+[[pattern]]
+name = "reference.five"
+pattern = '''(?<line>.*)'''

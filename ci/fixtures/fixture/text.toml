@@ -1,0 +1,5 @@
+# "Welcome back, Ana."
+[[pattern]]
+name = "character.welcome"
+pattern = '''^Welcome back, (?<name>\w+)\.$'''
+hook = "on_welcome"

@@ -1,0 +1,6 @@
+# Session logs hold other players' chat, so they never go in this repo.
+*.log
+
+__pycache__/
+.mudling/
+budget.json

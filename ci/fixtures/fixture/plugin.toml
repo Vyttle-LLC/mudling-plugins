@@ -1,0 +1,20 @@
+# CI's own test plugin: it passes every check. ci/test_registry.py copies it and
+# breaks one thing at a time.
+id = "fixture"
+name = "Fixture"
+version = "1.0.0"
+api = 1
+license = "MIT"
+layer = "game"
+permissions = ["write_store:character"]
+
+[servers]
+hosts = ["fixture.example"]
+mssp_names = ["Fixture"]
+
+[points]
+text = "text.toml"
+
+[hooks]
+# shared.luau first: greet.luau uses the Shared table it defines.
+files = ["shared.luau", "greet.luau"]
