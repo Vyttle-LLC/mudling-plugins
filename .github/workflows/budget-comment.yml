@@ -1,0 +1,43 @@
+name: Budget comment
+
+# A pull request from a fork can't write to this repo, so this runs afterwards
+# from main, where it can. It never checks out the pull request's code, and it
+# treats the report as forgeable: see `render_budget_table` in ci/registry.py.
+on:
+  workflow_run:
+    workflows: [Registry]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  comment:
+    name: Show the budget on the pull request
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Fetch the report
+        id: report
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: gh run download "$RUN_ID" --name budget --dir "$RUNNER_TEMP/report"
+      - name: Post it
+        if: steps.report.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_OWNER: ${{ github.event.workflow_run.head_repository.owner.login }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          python3 ci/registry.py comment "$RUNNER_TEMP/report/budget.json" > "$RUNNER_TEMP/comment.md"
+          ci/post-budget-comment.sh "$RUNNER_TEMP/comment.md"

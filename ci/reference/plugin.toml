@@ -1,0 +1,12 @@
+# Not a plugin for players. CI measures this beside each plugin, on the same
+# machine, and judges the plugin against it. It costs about the 5 µs budget on a
+# quiet machine: docs/ci.md#the-budget says how to check that.
+id = "reference"
+name = "Budget reference"
+version = "1.0.0"
+api = 1
+license = "MIT"
+layer = "default"
+
+[points]
+text = "text.toml"
