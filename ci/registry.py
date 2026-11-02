@@ -135,6 +135,15 @@ def check_layout(folder: Path, manifest: dict | None) -> list[Failure]:
             failures.append(
                 Failure("layout", f"{name}: session logs hold other players' chat, so they never go in the registry")
             )
+        # Lowercased, because a case-insensitive checkout reads any casing.
+        if path.name.lower() == ".gitattributes":
+            failures.append(
+                Failure(
+                    "layout",
+                    f"{name}: a plugin can't carry .gitattributes, because it changes the bytes a checkout"
+                    " holds, so the app's content hash wouldn't match CI's",
+                )
+            )
     return failures
 
 

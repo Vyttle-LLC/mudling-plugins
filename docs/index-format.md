@@ -108,6 +108,11 @@ CI allows only ASCII letters, digits, `.`, `_` and `-` in a name, so a path can'
 hold a space or a newline. Each line therefore has one reading, and two different
 folders can't produce the same list.
 
+The bytes are the files exactly as committed, which are also git's raw blobs at
+`commit`. The repo's own `.gitattributes` turns off line-ending conversion under
+`plugins/`, and CI refuses a `.gitattributes` inside a plugin, so a checkout and
+the raw blobs give the same hash.
+
 From inside a plugin's folder, this prints the same hex:
 
 ```sh

@@ -227,6 +227,14 @@ class Fails(Plugins):
         replace_in(self.plugin / "greet.luau", "function on_welcome(event)", "function on_welcome(event")
         self.assert_fails_for("lint", "doesn't compile")
 
+    def test_a_gitattributes_file_anywhere_in_the_plugin(self) -> None:
+        for place in ("", "tests"):
+            with self.subTest(place=place or "the plugin's folder"):
+                attributes = self.plugin / place / ".gitattributes"
+                attributes.write_text("*.txt text eol=crlf\n")
+                self.assert_fails_for("layout", "can't carry .gitattributes")
+                attributes.unlink()
+
     def test_a_session_log(self) -> None:
         (self.plugin / "tests" / "session.log").write_text("Bo tells you 'hi'\n")
         self.assert_fails_for("layout", "session.log")

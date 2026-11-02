@@ -30,8 +30,9 @@ mudling plugin test plugins/mygame
 
 The `id`, here `mygame`, is the folder's name too, and they must stay the same.
 Use lowercase letters, digits, `.`, `_` and `-`. Other file and folder names may
-also use capitals, but no spaces and nothing outside ASCII. You now have a plugin
-that loads and passes its own test.
+also use capitals, but no spaces and nothing outside ASCII. Don't add a
+`.gitattributes` file: it would change the bytes that the app checks. You now have
+a plugin that loads and passes its own test.
 
 ## 3. Teach it your game
 
