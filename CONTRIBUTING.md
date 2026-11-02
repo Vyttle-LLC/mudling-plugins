@@ -43,7 +43,9 @@ Edit the files in `plugins/mygame/`:
 - `text.toml` reads the game's text. Other extension points get files of their
   own.
 - `hooks.luau` holds Luau hooks, for what a pattern can't read. If you need none,
-  delete the file along with `[hooks]` and `permissions` in `plugin.toml`.
+  delete the file along with `[hooks]` and `permissions` in `plugin.toml` and
+  every `hook = "…"` line in `text.toml`. Then run the `--update` command from
+  step 4 once, because the sample's `.expected` still lists what the hook did.
 
 The [plugin API reference](https://github.com/Vyttle-LLC/mudling/blob/main/docs/plugins/reference.md)
 lists everything, and the
