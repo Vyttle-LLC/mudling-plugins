@@ -104,6 +104,10 @@ the way `sha256sum` prints:
    the path, and a newline.
 4. Take the SHA-256 of those lines. The hash is `sha256:` and its lowercase hex.
 
+CI allows only ASCII letters, digits, `.`, `_` and `-` in a name, so a path can't
+hold a space or a newline. Each line therefore has one reading, and two different
+folders can't produce the same list.
+
 From inside a plugin's folder, this prints the same hex:
 
 ```sh

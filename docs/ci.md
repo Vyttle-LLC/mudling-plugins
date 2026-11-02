@@ -8,13 +8,17 @@ folder in `plugins/`.
 
 | Check | How | `fail` kind |
 | --- | --- | --- |
-| The folder is named for the `id`. There are no symbolic links and no `*.log` files. | `ci/registry.py` | `layout` |
+| Only plugin folders sit under `plugins/`, beside its README. Each is named for its `id`. Every file and folder name uses only ASCII letters, digits, `.`, `_` and `-`. There are no symbolic links and no `*.log` files. | `ci/registry.py` | `layout` |
 | The license is `MIT` or `Apache-2.0`, exactly. | `ci/registry.py` | `license` |
 | The manifest and every other file load. | `mudling plugin test` | `manifest` |
 | Every pattern compiles. | `mudling plugin test` | `pattern` |
 | The plugin has tests, each produces its `.expected`, and no hook fails. | `mudling plugin test` | `tests`, `expected`, `hook` |
 | No hook overruns its limits, and each log stays within the budget. | `mudling plugin test`, then below | `budget` |
 | The Luau compiles and lints clean. | `luau-analyze`, under [`ci/luaurc`](../ci/luaurc) | `lint` |
+
+A layout failure stops that plugin's other checks, because `plugin test` prints
+paths and a bad name could confuse what reads them. Hooks must also survive the
+shared log described [below](#the-budget), not only the plugin's own tests.
 
 The hook files are linted as one, in the manifest's order, because they load into
 one VM. A plugin's own `.luaurc` doesn't count.
@@ -26,13 +30,13 @@ Merging needs every check to pass. On `main` the same checks run again, and the
 
 | Line | What to do |
 | --- | --- |
-| `fail <id> layout: …` | Rename the folder or the `id` so that they match, or remove the file it names. |
+| `fail <id> layout: …` | Rename the folder or the `id` so that they match, or rename or remove the file it names. |
 | `fail <id> license: …` | Set `license = "MIT"` or `"Apache-2.0"`, if you have the right to. |
 | `fail <id> manifest: …` | The reason names the file. Try `mudling plugin test plugins/<id>`. |
 | `fail <id> pattern: …` | The reason shows the pattern. Patterns are Rust `regex`, with no lookaround or backreferences. |
 | `fail <id> expected: …` | Your plugin produced something else. If the new output is right, run `mudling plugin test plugins/<id> --update`, read the difference, and commit it. |
 | `fail <id> tests: …` | Add a test: see [CONTRIBUTING](../CONTRIBUTING.md#4-write-its-tests). |
-| `fail <id> hook: …` | A hook raised an error on one of your test logs. |
+| `fail <id> hook: …` | A hook raised an error on one of your test logs, or on the shared log. Text from another game can match your pattern, so a hook shouldn't assume what it gets. |
 | `fail <id> budget: … overran` | A hook hit its limits. Do less work per event. |
 | `fail <id> budget: … the reference` | It costs too much per line: see below. |
 | `fail <id> lint: …` | The finding names the file and line. Prefix a variable you mean to leave unused with `_`. |
@@ -40,8 +44,9 @@ Merging needs every check to pass. On `main` the same checks run again, and the
 
 ## The budget
 
-A plugin may add at most 5 µs per line at p99 (MUDling's PRD, §11). `mudling plugin
-test` measures that directly, but GitHub's shared runners can't be trusted for an
+A plugin may add at most 5 µs per line at p99: see
+[the line budget](https://github.com/Vyttle-LLC/mudling/blob/main/docs/plugins/reference.md#the-line-budget)
+in the plugin API reference. `mudling plugin test` measures that directly, but GitHub's shared runners can't be trusted for an
 absolute number: they read up to four times over and vary twofold between runs.
 So CI ignores `plugin test`'s own 5 µs verdict and judges the plugin against
 [a reference plugin](../ci/reference) in the same job, as `mudling-bench compare`

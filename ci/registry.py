@@ -54,6 +54,8 @@ COST_LINE = re.compile(
 )
 LUAU_FINDING = re.compile(r"\./hooks\.luau\((\d+),(\d+)\): (.*)")
 PLUGIN_ID = re.compile(r"[a-z0-9][a-z0-9._-]*")
+SAFE_NAME = re.compile(r"[A-Za-z0-9._-]+")
+PLUGINS_README = "README.md"
 
 
 class CouldNotRun(Exception):
@@ -109,14 +111,24 @@ def read_manifest(folder: Path) -> dict | None:
         return None
 
 
+def shown(text: str) -> str:
+    """Text from a plugin as one printable line, whatever it holds."""
+    return text if text.isascii() and text.isprintable() else ascii(text)
+
+
 def check_layout(folder: Path, manifest: dict | None) -> list[Failure]:
+    """Refuses what could mislead a tool. Names are limited because `plugin test`
+    prints paths and the content hash lists them, one per line."""
+    if folder.is_symlink():
+        return [Failure("layout", f"{shown(folder.name)} is a symbolic link")]
     failures = []
     if manifest is not None and manifest.get("id") != folder.name:
-        failures.append(
-            Failure("layout", f"the folder is {folder.name} but the id is {manifest.get('id')}")
-        )
-    for path in sorted(folder.rglob("*")):
-        name = path.relative_to(folder)
+        found = f"the folder is {shown(folder.name)} but the id is {shown(str(manifest.get('id')))}"
+        failures.append(Failure("layout", found))
+    for path in [folder, *sorted(folder.rglob("*"))]:
+        name = shown(str(path.relative_to(folder.parent)))
+        if not SAFE_NAME.fullmatch(path.name):
+            failures.append(Failure("layout", f"{name}: a name may use only ASCII letters, digits, ., _ and -"))
         if path.is_symlink():
             failures.append(Failure("layout", f"{name} is a symbolic link"))
         if path.suffix.lower() == ".log":
@@ -124,6 +136,15 @@ def check_layout(folder: Path, manifest: dict | None) -> list[Failure]:
                 Failure("layout", f"{name}: session logs hold other players' chat, so they never go in the registry")
             )
     return failures
+
+
+def check_stray_files(plugins: Path) -> list[Result]:
+    """Only folders go directly under `plugins/`, beside its README."""
+    return [
+        Result(shown(path.name), [Failure("layout", "only plugin folders go directly under plugins/")])
+        for path in sorted(plugins.iterdir())
+        if not path.is_dir() and path.name != PLUGINS_README
+    ]
 
 
 def check_license(manifest: dict | None) -> list[Failure]:
@@ -210,7 +231,8 @@ def lint_hooks(tools: Tools, folder: Path, hook_files: list[str]) -> list[Failur
 
 
 def read_cost(lines: list[str]) -> Cost:
-    for line in lines:
+    """The last cost line: only text from a log or a path can come before it."""
+    for line in reversed(lines):
         found = COST_LINE.fullmatch(line)
         if found is not None:
             return Cost(float(found[1]), float(found[2]))
@@ -255,14 +277,21 @@ def check_budget(tools: Tools, folder: Path) -> Budget:
 
 def check_plugin(tools: Tools, folder: Path) -> Result:
     manifest = read_manifest(folder)
-    failures = check_layout(folder, manifest) + check_license(manifest)
+    plugin_id = shown(folder.name)
+    layout_problems = check_layout(folder, manifest)
+    failures = layout_problems + check_license(manifest)
+    if layout_problems:
+        return Result(plugin_id, failures)  # Nothing runs a plugin laid out like this.
+
     test_problems = test_failures(plugin_test(tools, folder))
     failures += test_problems
     if any(failure.kind in ("manifest", "pattern", "lint") for failure in test_problems):
-        return Result(folder.name, failures)  # It didn't load, so nothing else can run.
+        return Result(plugin_id, failures)  # It didn't load, so nothing else can run.
 
     hook_files = manifest.get("hooks", {}).get("files", [])
     failures += lint_hooks(tools, folder, hook_files)
+    # `plugin test` covered its own logs; a hook must survive the shared one too.
+    failures += test_failures(plugin_test(tools, folder, tools.session_log))
     budget = check_budget(tools, folder)
     if not budget.within:
         limit = f"{MOST_OVER_REFERENCE:.2f}"
@@ -272,7 +301,7 @@ def check_plugin(tools: Tools, folder: Path) -> Result:
                 f"on {budget.log}, {budget.ratio:.2f}× the reference's cost a line, and the limit is {limit}×",
             )
         )
-    return Result(folder.name, failures, budget)
+    return Result(plugin_id, failures, budget)
 
 
 def plugin_folders(plugins: Path) -> list[Path]:
@@ -316,13 +345,14 @@ def budget_comment(report: Path) -> str:
 
 def run_check(args: argparse.Namespace) -> bool:
     tools = Tools(args.mudling.resolve(), args.luau_analyze.resolve(), args.session_log.resolve())
-    results = [check_plugin(tools, folder) for folder in plugin_folders(args.plugins)]
+    results = check_stray_files(args.plugins)
+    results += [check_plugin(tools, folder) for folder in plugin_folders(args.plugins)]
     for result in results:
         for failure in result.failures:
             print(f"fail {result.id} {failure.kind}: {failure.detail}")
         if not result.failures:
             print(f"passed {result.id}")
-    print(f"{len(results)} plugins checked")
+    print(f"{len(results)} entries under plugins/ checked")
     report = [dataclasses.asdict(result) for result in results]
     if args.report is not None:
         args.report.write_text(json.dumps(report, indent=2))

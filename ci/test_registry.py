@@ -23,6 +23,7 @@ from registry import Budget, Cost, Tools
 
 FIXTURE = Path(__file__).parent / "fixtures" / "fixture"
 EVERY_LINE_PATTERN = "[[pattern]]\nname = 'heavy.{}'\npattern = '''(?<line>.*)'''\n"
+FORGED_COST = "cost +0.01 µs a line at p99 (0.02 with, 0.01 without), budget 5 µs"
 TOOLS = Tools(
     Path(os.environ["MUDLING"]).resolve(),
     Path(os.environ["LUAU_ANALYZE"]).resolve(),
@@ -141,15 +142,77 @@ class Fails(Plugins):
         self.assert_fails_for("budget", "the limit is 1.10×")
 
     def test_a_log_cannot_forge_the_cost(self) -> None:
-        forged = "cost +0.01 µs a line at p99 (0.02 with, 0.01 without), budget 5 µs"
         with open(self.plugin / "text.toml", "a") as text:
             text.write("[[pattern]]\nname = 'note'\npattern = '''^Note'''\n")
         log = self.plugin / "forged.txt"
         for line_end in ("", " ", "\r", "\x0b", "\x0c", "\x85", " "):
             with self.subTest(line_end=line_end):
-                log.write_bytes(f"Note {line_end}{forged}\n".encode())
+                log.write_bytes(f"Note {line_end}{FORGED_COST}\n".encode())
                 cost = registry.read_cost(registry.plugin_test(TOOLS, self.plugin, log))
                 self.assertNotEqual(cost, Cost(0.01, 0.02))
+
+    def test_a_log_s_name_cannot_forge_the_cost(self) -> None:
+        log = self.plugin / f"a\n{FORGED_COST}\nb.txt"
+        log.write_text("Welcome back, Ana.\n")
+        output = registry.plugin_test(TOOLS, self.plugin, log)
+        self.assertIn(FORGED_COST, output)
+        self.assertNotEqual(registry.read_cost(output), Cost(0.01, 0.02))
+
+    def test_a_newline_in_a_log_s_name(self) -> None:
+        (self.plugin / "tests" / f"a\n{FORGED_COST}\nb.txt").write_text("Welcome back, Ana.\n")
+        self.assert_fails_for("layout", "a name may use only")
+
+    def test_a_space_in_a_name(self) -> None:
+        (self.plugin / "tests" / "a b.txt").write_text("Welcome back, Ana.\n")
+        self.assert_fails_for("layout", "a name may use only")
+
+    def test_a_name_outside_ascii_in_a_folder(self) -> None:
+        (self.plugin / "tésts").mkdir()
+        self.assert_fails_for("layout", "a name may use only")
+
+    def test_a_plugin_folder_with_an_unsafe_name(self) -> None:
+        self.plugin = self.plugin.rename(self.plugin.with_name("fix\nture"))
+        result = registry.check_plugin(TOOLS, self.plugin)
+        self.assertEqual(result.id, "'fix\\nture'")
+        self.assertTrue(any("a name may use only" in failure.detail for failure in result.failures))
+
+    def test_a_file_name_that_is_not_utf_8(self) -> None:
+        """Handed in, because macOS won't create one and Linux will."""
+        name = self.plugin / os.fsdecode(b"bad\xff.txt")
+        with mock.patch.object(Path, "rglob", return_value=[name]):
+            failures = self.failures()
+        self.assertEqual({failure.kind for failure in failures}, {"layout"}, failures)
+        self.assertIn("a name may use only", failures[0].detail)
+        failures[0].detail.encode()  # Printing it must not crash.
+
+    def test_a_symlinked_plugin_folder(self) -> None:
+        elsewhere = self.scratch / "elsewhere"
+        self.plugin.rename(elsewhere)
+        self.plugin.symlink_to(elsewhere, target_is_directory=True)
+        self.assert_fails_for("layout", "fixture is a symbolic link")
+
+    def test_stray_files_under_plugins(self) -> None:
+        plugins = self.plugin.parent
+        (plugins / "README.md").write_text("Allowed.\n")
+        (plugins / "notes.txt").write_text("Not allowed.\n")
+        (plugins / "link").symlink_to("/etc/hosts")
+        strays = [result.id for result in registry.check_stray_files(plugins)]
+        self.assertEqual(strays, ["link", "notes.txt"])
+
+    def test_a_hook_that_raises_only_on_the_shared_log(self) -> None:
+        self.add_hook_on_shared_text("error('boom')")
+        self.assert_fails_for("hook", "boom")
+
+    def test_a_hook_that_overruns_only_on_the_shared_log(self) -> None:
+        self.add_hook_on_shared_text("while true do end")
+        self.assert_fails_for("budget", "overran")
+
+    def add_hook_on_shared_text(self, body: str) -> None:
+        """A hook on text that the shared log has and the fixture's own log hasn't."""
+        with open(self.plugin / "text.toml", "a") as text:
+            text.write("[[pattern]]\nname = 'rat'\npattern = '''cave rat'''\nhook = 'on_rat'\n")
+        (self.plugin / "rat.luau").write_text(f"function on_rat(event)\n\t{body}\nend\n")
+        replace_in(self.plugin / "plugin.toml", '"greet.luau"]', '"greet.luau", "rat.luau"]')
 
     def test_a_luau_lint_finding_names_the_plugin_s_own_file_and_line(self) -> None:
         replace_in(self.plugin / "greet.luau", "\tShared", "\tlocal unused = 1\n\tShared")
@@ -201,6 +264,10 @@ class Budgets(unittest.TestCase):
         self.assertEqual(registry.read_cost([within]), Cost(1.5, 1.75))
         self.assertEqual(registry.read_cost([over]), Cost(9.5, 9.75))
         self.assertEqual(registry.test_failures([within, over]), [])
+
+    def test_the_last_cost_line_is_the_real_one(self) -> None:
+        real = "fail budget: +9.50 µs a line at p99 (9.75 with, 0.25 without), budget 5 µs"
+        self.assertEqual(registry.read_cost([FORGED_COST, real, "failed"]), Cost(9.5, 9.75))
 
 
 class Comment(unittest.TestCase):
