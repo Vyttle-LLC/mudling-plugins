@@ -134,14 +134,20 @@ def check_license(manifest: dict | None) -> list[Failure]:
 
 
 def plugin_test(tools: Tools, folder: Path, log: Path | None = None) -> list[str]:
-    """The lines of `mudling plugin test`. Exit 1 is a verdict, so it's fine."""
+    """The lines of `mudling plugin test`. Exit 1 is a verdict, so it's fine.
+
+    Output echoes a log's text, so only `\\n` ends a line. `text=True` and
+    `splitlines` would end one at characters a log can hold, and a log could
+    then print a cost of its own.
+    """
     command = [tools.mudling, "plugin", "test", folder]
     if log is not None:
         command += ["--log", log]
-    run = subprocess.run(command, capture_output=True, text=True)
-    lines = run.stdout.splitlines()
-    if run.returncode not in (0, 1) or not lines or lines[-1] not in ("passed", "failed"):
-        raise CouldNotRun(f"mudling plugin test {folder} exited {run.returncode}: {run.stderr.strip()}")
+    run = subprocess.run(command, capture_output=True)
+    lines = run.stdout.decode(errors="replace").removesuffix("\n").split("\n")
+    if run.returncode not in (0, 1) or lines[-1] not in ("passed", "failed"):
+        stderr = run.stderr.decode(errors="replace").strip()
+        raise CouldNotRun(f"mudling plugin test {folder} exited {run.returncode}: {stderr}")
     return lines
 
 
@@ -394,7 +400,8 @@ def run_index(args: argparse.Namespace) -> bool:
 
 
 def run_comment(args: argparse.Namespace) -> bool:
-    print(budget_comment(args.report))
+    # No newline: post-budget-comment.sh takes an empty file to mean no comment.
+    print(budget_comment(args.report), end="")
     return True
 
 

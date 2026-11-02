@@ -12,6 +12,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -139,6 +140,17 @@ class Fails(Plugins):
         add_patterns(self.plugin, 24)
         self.assert_fails_for("budget", "the limit is 1.10×")
 
+    def test_a_log_cannot_forge_the_cost(self) -> None:
+        forged = "cost +0.01 µs a line at p99 (0.02 with, 0.01 without), budget 5 µs"
+        with open(self.plugin / "text.toml", "a") as text:
+            text.write("[[pattern]]\nname = 'note'\npattern = '''^Note'''\n")
+        log = self.plugin / "forged.txt"
+        for line_end in ("", " ", "\r", "\x0b", "\x0c", "\x85", " "):
+            with self.subTest(line_end=line_end):
+                log.write_bytes(f"Note {line_end}{forged}\n".encode())
+                cost = registry.read_cost(registry.plugin_test(TOOLS, self.plugin, log))
+                self.assertNotEqual(cost, Cost(0.01, 0.02))
+
     def test_a_luau_lint_finding_names_the_plugin_s_own_file_and_line(self) -> None:
         replace_in(self.plugin / "greet.luau", "\tShared", "\tlocal unused = 1\n\tShared")
         self.assert_fails_for("lint", "greet.luau:2:8: LocalUnused")
@@ -209,6 +221,17 @@ class Comment(unittest.TestCase):
 
     def test_nothing_measured_is_no_comment(self) -> None:
         self.assertEqual(self.comment([{"id": "fixture", "budget": None}]), "")
+
+    def test_nothing_measured_writes_an_empty_file_for_the_post_script(self) -> None:
+        with tempfile.TemporaryDirectory() as scratch:
+            report = Path(scratch) / "report.json"
+            report.write_text("[]")
+            run = subprocess.run(
+                [sys.executable, registry.__file__, "comment", report],
+                capture_output=True,
+                check=True,
+            )
+        self.assertEqual(run.stdout, b"")
 
     def test_a_forged_report_gets_no_text_through(self) -> None:
         self.assertEqual(self.comment([self.result("![x](http://evil)")]), "")
