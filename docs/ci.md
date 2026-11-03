@@ -95,7 +95,9 @@ target/release/mudling plugin test <path to ci/reference> --log crates/mudling-b
 It should read just under `+5 µs`. Each rule costs about 0.6 µs on that log, so
 add or remove rules in [`ci/reference/text.toml`](../ci/reference/text.toml) to
 bring it back. On an Apple Silicon Mac at MUDling commit `1282f8a`, with a load
-average under 4, eight rules read between +4.5 and +4.8 µs on that log.
+average under 4, eight rules read between +4.5 and +4.8 µs on that log. At
+`7efee42`, with a load average of 7 to 8, most runs read between +4.5 and +5.0 µs
+and some read far above, so measure it again on a quiet machine.
 
 A rule costs less on short lines, so on a log of short lines the reference reads
 nearer +3 µs, and the limit there is stricter than 5 µs. The shared log holds the
